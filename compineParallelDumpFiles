@@ -1,0 +1,14 @@
+#!/bin/bash
+
+atomsWater=$(awk '{ if (FNR==4) {sum+=$0} } END {print sum} ' $(ls *waterequil))
+atomsMetal=$(awk '{ if (FNR==4) {sum+=$0} } END {print sum} ' $(ls *metalequil))
+
+head -n 3 1.11000.waterequil > water.dump
+echo "$atomsWater" >> water.dump
+awk 'FNR>=5 && FNR<=9' 1.11000.waterequil >> water.dump
+tail -n +10 -q *waterequil >> water.dump
+
+head -n 3 1.11000.metalequil > metal.dump
+echo "$atomsMetal" >> metal.dump
+awk 'FNR>=5 && FNR<=9' 1.11000.metalequil >> metal.dump
+tail -n +10 -q *metalequil >> metal.dump
