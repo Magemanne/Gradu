@@ -1,0 +1,360 @@
+#Commented commands were used to create water
+processors    * * * grid twolevel 128 * * *
+#units         metal #must use this because of eam potential
+#atom_style    full
+#boundary      p p p
+#region        box block 0.0 3.1 0.0 3.1 0.0 3.1
+#create_box    4 box bond/types 1 angle/types 1 &
+#              extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 2
+#molecule      water_mol water.mol
+#create_atoms  0 random 1 4112 box mol water_mol 18141 overlap 1.0 maxtry 50 #create single atom
+#replicate     200 200 160 #changing last one can cause annoying tensions, remove more water 
+#include       forcefield.TIP4P-2005 #This also includes other information, like lattice.
+
+units         metal #must use this because of eam potential
+read_restart  ../Al2O3/restart/start.%.equil2.restart
+molecule      water_mol water.mol
+include       forcefield.TIP4P-2005 #This also includes other information, like lattice.
+
+
+variable      metalsurface equal 50 #Amount of metal top of system
+variable      insertz equal 70    #When adding water between collapses, this is the amount which the box is changed for a while.
+variable      Text equal 298.0      #room temperature
+variable      speed equal 80      #Speed given to bottom molecules
+
+group         hydrogen type 1
+group         oxygen type 2
+group         water type 1 2
+group         metal type 3 4
+
+compute       mperatom metal pe/atom
+compute       pe_Cu metal reduce sum c_mperatom
+compute       mkeratom metal ke/atom
+compute       ke_Cu metal reduce sum c_mkeratom
+compute       water_temp water temp
+compute       Cu_temp metal temp
+compute       Peratom all pe/atom
+compute       pe_all all reduce sum c_Peratom
+compute       Keatom  all ke/atom
+compute       ke_all all reduce sum c_Keatom
+compute       surfstress all stress/atom NULL
+
+
+variable       P equal press
+variable       p atom -(c_surfstress[1]+c_surfstress[2]+c_surfstress[3])/3
+
+
+timestep       0.0005 #0.5 fs
+
+neighbor      2.0 bin
+neigh_modify  every 1 delay 0 check yes one 100000 page 10000000
+
+fix           constrain all shake 1.0e-4 100 0 b 1 a 1 mol water_mol  #This keeps the bonds fixed
+
+thermo       1
+
+#fix          nptstart all npt temp 300.0 300.0 1.0 iso 1.0 1.0 0.1
+#run          10000
+#unfix        nptstart
+#write_restart  restart/start.%.equil2.restart nfile 128
+
+
+
+region        updelz block INF INF INF INF $(zhi-2) INF
+region        downdelz block INF INF INF INF INF $(zlo+2)
+change_box    all boundary p p f units box #change box size for added atoms
+
+region        updelx block INF $(zlo+2) INF INF INF INF
+region        downdelx block $(zhi-2) INF INF INF INF INF
+
+region        updely block INF INF $(zhi-2) INF INF INF
+region        downdely block INF INF INF $(zlo+2) INF INF
+change_box    all boundary p p f units box #change box size for added atoms
+
+delete_atoms  region updelx compress no mol yes
+delete_atoms  region downdelx compress no mol yes
+delete_atoms  region updely compress no mol yes
+delete_atoms  region downdely compress no mol yes
+delete_atoms  region updelz compress no mol yes
+delete_atoms  region downdelz compress no mol yes
+kspace_modify slab 3.0
+
+change_box    all z final $(zlo) $(zhi+v_metalsurface) boundary p p f units box #change box size for added atoms
+
+variable      a equal zhi-${metalsurface}
+
+
+#create atoms top of system
+region        TOP block EDGE EDGE EDGE EDGE $a EDGE units box
+
+create_atoms 2 region TOP &
+basis 1 3 &
+basis 2 3 &
+basis 3 3 &
+basis 4 3 &
+basis 5 3 &
+basis 6 3 &
+basis 7 3 &
+basis 8 3 &
+basis 9 3 &
+basis 10 3 &
+basis 11 3 &
+basis 12 3 &
+basis 13 4 &
+basis 14 4 &
+basis 15 4 &
+basis 16 4 &
+basis 17 4 &
+basis 18 4 &
+basis 19 4 &
+basis 20 4 &
+basis 21 4 &
+basis 22 4 &
+basis 23 4 &
+basis 24 4 &
+basis 25 4 &
+basis 26 4 &
+basis 27 4 &
+basis 28 4 &
+basis 29 4 &
+basis 30 4 &
+units lattice
+
+lattice fcc    4.05
+
+change_box    all z final $(zlo) $(zhi+300) units box #change box size for added atoms
+
+variable      a equal zhi-300
+
+
+#create atoms top of system
+region        TOP2 block EDGE EDGE EDGE EDGE $a EDGE units box
+
+create_atoms  3 region TOP2
+
+group         metal type 3 4
+group         aluminium    type 3
+group         Al_O    type 4
+
+change_box    all z final $(zlo) $(zhi+6.0) units box #change box size for added atoms
+
+fix           topwall all wall/lj126 zhi EDGE 3.88 2.95 20.0
+fix           botwall all wall/reflect zlo EDGE
+
+
+thermo_style  custom step temp c_Cu_temp c_water_temp press vol
+fix           data all ave/time 5 10 100 v_P c_Cu_temp c_pe_Cu c_ke_Cu c_pe_all c_ke_all file temp.profile
+
+delete_atoms  overlap 1.4 metal metal mol yes
+delete_atoms  overlap 2.0 aluminium aluminium mol yes
+delete_atoms  overlap 3.8 water metal mol yes
+
+
+#Equilibrete whole system
+#unfix         startnpt
+fix           startnph all nph x 1.0 1.0 0.1 y 1.0 1.0 0.1 couple xy #equilibriating water
+fix           waterber water temp/berendsen 301.0 300.0 1
+fix           metalber metal temp/berendsen 300.0 300.0 1
+
+
+run           100
+write_dump all atom dump.atom1
+velocity     Al_O create 2500.0 4228459 rot yes dist gaussian loop local
+run           100
+
+thermo        100
+run           9000
+
+unfix         startnph
+unfix         waterber
+unfix         metalber
+
+
+compute       metalclust metal cluster/atom 3.6
+
+region        TOPTherm block EDGE EDGE EDGE EDGE $(zhi-32) EDGE units box
+group         therm_top region TOPTherm
+
+compute       clusterid1 therm_top reduce min c_metalclust
+compute       clusterid2 therm_top reduce max c_metalclust
+
+thermo_modify lost warn # I don't really care if few atoms disappear
+thermo_modify lost/bond warn
+
+variable      h equal c_clusterid1
+variable      o equal c_clusterid2
+
+#force calculation of c_clusterid
+write_restart restart/start.%.equil.restart2 nfile 128
+
+
+variable      c equal 1
+label         runloop
+dump          therm1 water custom 800 dump.thermo/%.*.water id type x y z vx vy vz v_p
+dump          therm2 metal custom 800 dump.thermo/%.*.metal id type x y z fx fy fz vx vy vz c_Peratom c_Keatom c_surfstress[*]
+dump_modify   therm1 fileper 128
+dump_modify   therm2 fileper 128
+
+fix           nptstart all npt temp ${Text} ${Text} 0.1 x 1.0 1.0 1.0 y 1.0 1.0 1.0 couple xy
+run           4000
+
+variable      h equal c_clusterid1
+variable      o equal c_clusterid2
+
+print         $h screen yes
+print         $o screen yes
+
+variable       meatom atom "c_metalclust == v_h"
+run                50
+group          zlowfinder variable meatom
+run                50
+
+variable       Xcav equal (xlo+xhi)/2
+variable       Ycav equal (ylo+yhi)/2
+run            50
+region         zbox block $(v_Xcav-75) $(v_Xcav+75) $(v_Ycav-75) $(v_Ycav+75) EDGE EDGE units box
+run            50
+group          zcoord region zbox
+run            50
+group          zcoord include molecule
+run            50
+group          zcoord2 intersect zcoord zlowfinder
+run            50
+group          zcoord2 include molecule
+run            50
+compute        Zcav1 zcoord2 reduce min z
+run            50
+variable       Zcav2 equal c_Zcav1
+variable       Zcav equal v_Zcav2-130-10
+run            50
+region         cavitation sphere v_Xcav v_Ycav v_Zcav 130 side in units box #region where atoms will be removed
+region         surfacewater_reg sphere v_Xcav v_Ycav v_Zcav 135 side in units box #little bit larger region so the bubbles surface can be studied.
+
+group          surfacewater region surfacewater_reg
+group          surfacewater include molecule
+dump           surfacedump surfacewater custom 100 surfacedump$c.thermo id type x y z fx fy fz vx vy vz c_surfstress[*]
+#create the bubble
+variable       N0t equal angles
+variable       N0 equal ${N0t}
+group          cav1 region cavitation
+group          cav2 intersect cav1 water
+delete_atoms   group cav2 mol yes compress no
+group          cav1 clear
+group          cav2 clear
+variable       N1t equal angles
+variable       N1 equal ${N1t}
+variable       N equal (${N0}-${N1})
+print          $N
+
+run            200
+unfix          nptstart
+
+
+#create thermostats for water and metal
+
+group         therm_rest subtract metal therm_top
+
+region        impactwall1 block EDGE EDGE EDGE EDGE $(v_Zcav-15) v_Zcav units box
+group         impact region impactwall1
+group         waterwall subtract impact surfacewater
+group         restwater subtract water waterwall
+
+fix           nvtwater waterwall nvt temp ${Text} ${Text} 0.05
+fix               nvewater restwater nve
+fix           nvtmetal therm_top nvt temp ${Text} ${Text} 0.005
+fix           nvemetal therm_rest nve
+
+#creates the shockwave
+variable      b equal zlo+75
+region        BOTTOM block EDGE EDGE EDGE EDGE EDGE $b units box
+group         speedster region BOTTOM
+velocity      speedster set NULL NULL ${speed} sum yes units box
+
+
+#run some time and let
+run           10000
+unfix         nvtwater
+fix           nvtwater waterwall nve
+
+run           35000
+
+
+#Add water molecules to the system
+unfix         botwall  #remove the bottom wall for atoms
+change_box    all z delta -${insertz} 0 units box #change box so that atoms can be added
+region        bottominsert block EDGE EDGE EDGE EDGE $(zlo+3) $(zlo+v_insertz-3) units box #creates region where atoms are added
+create_atoms  0 random $N 43112 bottominsert mol water_mol 1891 overlap 0.5 maxtry 50 #create atoms the equal amount as were removed.
+
+#because water is added and destroyed during run it is important to keep the groups updated.
+
+unfix         nvtwater
+unfix         nvtmetal
+unfix         nvemetal
+unfix         nvewater
+group         restwater clear
+group         impact clear
+group         therm_rest clear
+group         waterwall clear
+group         speedster clear
+region        impactwall1 delete
+group         hydrogen clear
+group         oxygen clear
+group         water clear
+group         zcoord clear
+group         zlowfinder clear
+group         zcoord2 clear
+group         hydrogen type 1
+group         oxygen type 2
+group         water type 1 2
+
+unfix         constrain
+fix           constrain all shake 1.0e-4 100 0 b 1 a 1 mol water_mol
+
+
+fix           nvtall all nvt temp ${Text} ${Text} 1
+
+undump        therm1
+undump        therm2
+dump          therm1 water custom 4000 dump.thermo/%.*.water id type x y z vx vy vz v_p
+dump          therm2 metal custom 4000 dump.thermo/%.*.metal id type x y z fx fy fz vx vy vz c_Peratom c_Keatom c_surfstress[*]
+dump_modify   therm1 fileper 128
+dump_modify   therm2 fileper 128
+
+
+#ramps the bottom wall back where it was
+variable      cramp equal ramp($(zlo),$(zlo+v_insertz+2))
+fix           botwall all wall/reflect zlo v_cramp units box
+run           15000
+
+#remove copressing bottom wall end bting back normal reflective wall
+change_box    all z delta ${insertz} 0 units box
+unfix         botwall
+fix           botwall all wall/reflect zlo EDGE units box
+unfix         nvtall
+fix           nptall all npt temp ${Text} ${Text} 0.1 x 1.0 1.0 1 y 1.0 1.0 1 couple xy
+#run to cool thinks down 
+run            5000
+
+shell          "./a.out"
+include        var.txt
+displace_atoms all move v_random1 v_random2 0 units box
+
+run            100
+unfix          nptall
+
+#remove groups and stuff created during loop, some of these are not needed and should be maybe cleaned.
+undump        surfacedump
+uncompute     Zcav1
+group         surfacewater delete
+group         speedster delete
+group         therm_rest delete
+region        BOTTOM delete
+region        zbox delete
+region        cavitation delete
+region        surfacewater_reg delete
+region        bottominsert delete
+
+write_restart restart/restart.%.equil$c fileper 128
+
+next          c
+jump          SELF runlo
