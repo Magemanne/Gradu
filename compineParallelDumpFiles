@@ -1,14 +1,30 @@
-#!/bin/bash
 
-atomsWater=$(awk '{ if (FNR==4) {sum+=$0} } END {print sum} ' $(ls *waterequil))
-atomsMetal=$(awk '{ if (FNR==4) {sum+=$0} } END {print sum} ' $(ls *metalequil))
+#unzip *.zip
 
-head -n 3 1.11000.waterequil > water.dump
-echo "$atomsWater" >> water.dump
-awk 'FNR>=5 && FNR<=9' 1.11000.waterequil >> water.dump
-tail -n +10 -q *waterequil >> water.dump
 
-head -n 3 1.11000.metalequil > metal.dump
-echo "$atomsMetal" >> metal.dump
-awk 'FNR>=5 && FNR<=9' 1.11000.metalequil >> metal.dump
-tail -n +10 -q *metalequil >> metal.dump
+for i in $(seq $1 $2 $3)
+do
+if [ -e 1.$i.water  ]; then
+#cd $i  
+        atomsWater=$(awk '{ if (FNR==4) {sum+=$0} } END {print sum} ' $(ls *.$i.water))
+        atomsMetal=$(awk '{ if (FNR==4) {sum+=$0} } END {print sum} ' $(ls *.$i.metal))
+
+        head -n 3 1.$i.water > $i.water.dump
+        echo "$atomsWater" >> $i.water.dump
+        awk 'FNR>=5 && FNR<=9' 1.$i.water >> $i.water.dump
+        tail -n +10 -q *.$i.water >> $i.water.dump
+
+        head -n 3 1.$i.metal > $i.metal.dump
+        echo "$atomsMetal" >> $i.metal.dump
+        awk 'FNR>=5 && FNR<=9' 1.$i.metal >> $i.metal.dump
+        tail -n +10 -q *.$i.metal >> $i.metal.dump
+        #mv $i.metal.dump ..
+#       mv $i.water.dump .. 
+#       cd ..
+echo "$i" 
+else
+
+ echo "skipping $i "
+fi
+	
+done    
